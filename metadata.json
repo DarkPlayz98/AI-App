@@ -1,0 +1,5 @@
+{
+  "name": "LearnSphere AI",
+  "description": "An AI-powered learning assistant that generates flashcards, helps with language learning through chat and quizzes, and solves complex math problems with step-by-step explanations.",
+  "requestFramePermissions": []
+}

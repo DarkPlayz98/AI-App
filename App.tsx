@@ -1,70 +1,31 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { enhancePrompt, generateImage } from './services/geminiService';
 
-import React, { useState, useMemo } from 'react';
-import FlashcardsView from './features/flashcards/FlashcardsView';
-import LanguageHubView from './features/language/LanguageHubView';
-import MathSolverView from './features/math/MathSolverView';
-import TabButton from './components/TabButton';
-import { BookOpenIcon, MessageSquareIcon, SigmaIcon } from './components/icons/Icons';
-
-type Tab = 'flashcards' | 'language' | 'math';
+const styles = ['None', 'Photorealistic', 'Cinematic', 'Anime', '3D Render', 'Illustration', 'Product Photo', 'Fantasy'];
+const ratios = ['1:1', '16:9', '9:16', '4:3', '3:4'];
+const sizes = ['1K', '2K'];
+type HistoryItem = { id: string; prompt: string; image: string; createdAt: number; ratio: string };
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<Tab>('flashcards');
-
-  const tabs = useMemo(() => [
-    { id: 'flashcards' as Tab, label: 'Flashcards', icon: <BookOpenIcon /> },
-    { id: 'language' as Tab, label: 'Language Hub', icon: <MessageSquareIcon /> },
-    { id: 'math' as Tab, label: 'Math Solver', icon: <SigmaIcon /> },
-  ], []);
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'flashcards':
-        return <FlashcardsView />;
-      case 'language':
-        return <LanguageHubView />;
-      case 'math':
-        return <MathSolverView />;
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 font-sans">
-      <div className="container mx-auto p-4 max-w-5xl">
-        <header className="text-center my-6 md:my-10">
-          <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
-            LearnSphere AI
-          </h1>
-          <p className="text-gray-400 mt-2">Your AI-powered personal tutor for any subject.</p>
-        </header>
-
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700/50 shadow-2xl">
-          <nav className="p-2 border-b border-gray-700/50 flex flex-wrap justify-center gap-2">
-            {tabs.map(tab => (
-              <TabButton
-                key={tab.id}
-                isActive={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.icon}
-                {tab.label}
-              </TabButton>
-            ))}
-          </nav>
-
-          <main className="p-4 md:p-8">
-            {renderContent()}
-          </main>
-        </div>
-
-        <footer className="text-center text-gray-500 text-sm py-8">
-          <p>Powered by Gemini. Built for modern learning.</p>
-        </footer>
-      </div>
-    </div>
-  );
+  const [prompt, setPrompt] = useState(''); const [negative, setNegative] = useState('');
+  const [style, setStyle] = useState('None'); const [ratio, setRatio] = useState('1:1'); const [size, setSize] = useState('1K');
+  const [image, setImage] = useState(''); const [busy, setBusy] = useState(false); const [enhancing, setEnhancing] = useState(false);
+  const [error, setError] = useState(''); const [history, setHistory] = useState<HistoryItem[]>([]); const [showHistory, setShowHistory] = useState(false); const [advanced, setAdvanced] = useState(false);
+  useEffect(() => { try { setHistory(JSON.parse(localStorage.getItem('origin-image-history') || '[]')); } catch { setHistory([]); } }, []);
+  const saveHistory = (item: HistoryItem) => setHistory(prev => { const next = [item, ...prev].slice(0, 24); localStorage.setItem('origin-image-history', JSON.stringify(next)); return next; });
+  const finalPrompt = useMemo(() => [prompt.trim(), style !== 'None' ? `Style: ${style}.` : '', negative.trim() ? `Avoid: ${negative.trim()}.` : ''].filter(Boolean).join('\n'), [prompt, style, negative]);
+  const generate = async () => { if (!prompt.trim() || busy) return; setBusy(true); setError(''); try { const result = await generateImage(finalPrompt, ratio, size); setImage(result); saveHistory({ id: crypto.randomUUID(), prompt: finalPrompt, image: result, createdAt: Date.now(), ratio }); } catch (e) { setError(e instanceof Error ? e.message : 'Generation failed. Check your Gemini API key and try again.'); } finally { setBusy(false); } };
+  const enhance = async () => { if (!prompt.trim() || enhancing) return; setEnhancing(true); setError(''); try { setPrompt(await enhancePrompt(prompt)); } catch (e) { setError(e instanceof Error ? e.message : 'Could not enhance prompt.'); } finally { setEnhancing(false); } };
+  const download = () => { if (!image) return; const a = document.createElement('a'); a.href = image; a.download = `origin-${Date.now()}.png`; a.click(); };
+  return <div className="app-shell"><style>{`*{box-sizing:border-box}body{margin:0;background:#090a0c;color:#f5f5f5;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,textarea,select{font:inherit}.app-shell{min-height:100vh;background:radial-gradient(circle at 50% -10%,#202328 0,#0d0e10 38%,#090a0c 72%)}.top{height:68px;border-bottom:1px solid #25272b;display:flex;align-items:center;justify-content:space-between;padding:0 22px;position:sticky;top:0;background:#0b0c0ee8;backdrop-filter:blur(18px);z-index:10}.brand{font-size:20px;font-weight:700;letter-spacing:-.03em}.brand span{color:#9ca3af;font-weight:500}.top button,.icon-btn{border:1px solid #292c31;background:#15171a;color:#ddd;border-radius:11px;padding:9px 13px;cursor:pointer}.layout{max-width:1250px;margin:auto;padding:28px 18px 60px;display:grid;grid-template-columns:390px 1fr;gap:22px}.panel{border:1px solid #25282d;background:#111316cc;border-radius:20px;box-shadow:0 18px 60px #0006}.controls{padding:20px}.label{font-size:12px;color:#9da2aa;margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}.prompt{width:100%;min-height:150px;resize:vertical;background:#0a0b0d;border:1px solid #292c31;border-radius:14px;color:#f5f5f5;padding:14px;outline:none;line-height:1.5}.prompt:focus{border-color:#555b65;box-shadow:0 0 0 3px #ffffff08}.enhance{width:100%;margin-top:8px;border:1px solid #30343a;background:#191b1f;color:#eee;padding:10px;border-radius:11px;cursor:pointer}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:17px}.select{width:100%;background:#15171a;color:#eee;border:1px solid #292c31;border-radius:11px;padding:10px;outline:none}.chips{display:flex;gap:7px;flex-wrap:wrap}.chip{border:1px solid #2b2e33;background:#15171a;color:#bfc3ca;padding:8px 10px;border-radius:10px;cursor:pointer;font-size:12px}.chip.active{background:#e9eaec;color:#111;border-color:#e9eaec}.advanced{margin-top:17px;border-top:1px solid #25282d;padding-top:15px}.advanced-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;color:#ddd;font-size:13px}.negative{margin-top:10px;min-height:75px}.generate{width:100%;margin-top:18px;border:0;background:#f1f2f3;color:#0b0c0e;font-weight:700;padding:13px;border-radius:12px;cursor:pointer;transition:.18s}.generate:hover{transform:translateY(-1px);background:#fff}.generate:disabled{opacity:.5;cursor:not-allowed;transform:none}.stage{min-height:620px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}.empty{text-align:center;color:#777;max-width:330px}.empty .mark{width:58px;height:58px;border:1px solid #30343a;border-radius:17px;display:grid;place-items:center;margin:0 auto 18px;font-size:25px}.empty h2{margin:0 0 8px;color:#ddd;font-size:20px}.empty p{margin:0;line-height:1.5;font-size:13px}.result{width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:18px}.result img{max-width:100%;max-height:650px;object-fit:contain;border-radius:13px;box-shadow:0 20px 70px #0008}.result-actions{position:absolute;right:18px;top:18px;display:flex;gap:8px}.spinner{width:32px;height:32px;border:3px solid #34373c;border-top-color:#eee;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.loading{text-align:center;color:#999}.loading b{display:block;color:#eee;margin-top:15px}.error{margin-top:12px;color:#ff9c9c;background:#35191b;border:1px solid #5b292d;padding:10px;border-radius:10px;font-size:12px}.history{position:fixed;inset:0;background:#0009;z-index:30;display:flex;justify-content:flex-end}.drawer{width:min(430px,100%);height:100%;background:#101114;border-left:1px solid #292c31;padding:20px;overflow:auto}.drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.thumb{width:100%;aspect-ratio:1.2;border-radius:12px;object-fit:cover;background:#090a0c}.history-card{border:1px solid #292c31;background:#15171a;border-radius:14px;padding:8px;margin-bottom:12px;cursor:pointer}.history-text{font-size:12px;color:#c8cbd0;padding:7px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.muted{color:#777;font-size:12px}@media(max-width:850px){.layout{grid-template-columns:1fr;padding:14px}.stage{min-height:55vh}.top{padding:0 14px}.panel{border-radius:16px}}`}</style>
+    <header className="top"><div className="brand">Origin <span>/ Image</span></div><button onClick={() => setShowHistory(true)}>History {history.length ? `(${history.length})` : ''}</button></header>
+    <main className="layout"><section className="panel controls"><p className="label">Prompt</p><textarea className="prompt" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Describe the image you want to create..."/><button className="enhance" onClick={enhance} disabled={!prompt.trim() || enhancing}>{enhancing ? 'Enhancing…' : '✦ Enhance prompt'}</button>
+      <div className="row"><div><p className="label">Style</p><select className="select" value={style} onChange={e => setStyle(e.target.value)}>{styles.map(x => <option key={x}>{x}</option>)}</select></div><div><p className="label">Size</p><select className="select" value={size} onChange={e => setSize(e.target.value)}>{sizes.map(x => <option key={x}>{x}</option>)}</select></div></div>
+      <div style={{marginTop:17}}><p className="label">Aspect ratio</p><div className="chips">{ratios.map(x => <button className={`chip ${ratio===x?'active':''}`} key={x} onClick={() => setRatio(x)}>{x}</button>)}</div></div>
+      <div className="advanced"><div className="advanced-head" onClick={() => setAdvanced(!advanced)}><span>Advanced</span><span>{advanced ? '−' : '+'}</span></div>{advanced && <textarea className="prompt negative" value={negative} onChange={e => setNegative(e.target.value)} placeholder="Things to avoid: blur, low quality, extra fingers..."/>}</div>
+      <button className="generate" onClick={generate} disabled={!prompt.trim() || busy}>{busy ? 'Creating image…' : image ? 'Generate again' : 'Generate image'}</button>{error && <div className="error">{error}</div>}</section>
+      <section className="panel stage">{busy ? <div className="loading"><div className="spinner"/><b>Creating your image</b><span className="muted">This can take a moment.</span></div> : image ? <div className="result"><img src={image} alt="Generated"/><div className="result-actions"><button className="icon-btn" onClick={download}>↓ Download</button></div></div> : <div className="empty"><div className="mark">✦</div><h2>Make something worth keeping.</h2><p>Write a detailed prompt, choose your canvas, and let Gemini turn it into an image.</p></div>}</section></main>
+      {showHistory && <div className="history" onClick={() => setShowHistory(false)}><aside className="drawer" onClick={e => e.stopPropagation()}><div className="drawer-head"><div><div className="brand">History</div><div className="muted">Your recent generations</div></div><button className="icon-btn" onClick={() => setShowHistory(false)}>Close</button></div>{history.length===0 ? <div className="empty"><p>No generations yet.</p></div> : history.map(item => <div className="history-card" key={item.id} onClick={() => {setImage(item.image);setPrompt(item.prompt);setRatio(item.ratio);setShowHistory(false)}}><img className="thumb" src={item.image} alt=""/><div className="history-text">{item.prompt}</div></div>)}</aside></div>}
+  </div>;
 };
-
 export default App;

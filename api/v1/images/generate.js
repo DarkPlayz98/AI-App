@@ -1,14 +1,33 @@
-import { GoogleGenAI, Modality } from '@google/genai';
+import { HfInference } from '@huggingface/inference';
+
+const MODEL = 'black-forest-labs/FLUX.1-schnell';
+
+function dimensions(aspectRatio, imageSize) {
+  const scale = imageSize === '2K' ? 1.4 : imageSize === '4K' ? 2 : 1;
+  const base = 768;
+  const values = {
+    '1:1': [base, base],
+    '16:9': [1024, 576],
+    '9:16': [576, 1024],
+    '4:3': [896, 672],
+    '3:4': [672, 896],
+  };
+  const [width, height] = values[aspectRatio] || values['1:1'];
+  return {
+    width: Math.min(1536, Math.round(width * scale)),
+    height: Math.min(1536, Math.round(height * scale)),
+  };
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
   try {
-    const geminiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!geminiKey) {
+    const hfToken = process.env.HF_TOKEN?.trim();
+    if (!hfToken) {
       return res.status(500).json({
         ok: false,
-        error: 'GEMINI_API_KEY is missing in Vercel. Add a Gemini API key under Project Settings -> Environment Variables, then redeploy.'
+        error: 'HF_TOKEN is missing in Vercel. Create a Hugging Face token with Inference permissions, add it under Project Settings -> Environment Variables, then redeploy.',
       });
     }
 
@@ -22,44 +41,38 @@ export default async function handler(req, res) {
     if (!validRatios.includes(aspectRatio)) return res.status(400).json({ ok: false, error: 'Invalid aspectRatio' });
     if (!validSizes.includes(imageSize)) return res.status(400).json({ ok: false, error: 'Invalid imageSize' });
 
-    const ai = new GoogleGenAI({ apiKey: geminiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-image',
-      contents: prompt,
-      config: {
-        responseModalities: [Modality.TEXT, Modality.IMAGE],
-        imageConfig: { aspectRatio, imageSize }
-      }
+    const client = new HfInference(hfToken);
+    const { width, height } = dimensions(aspectRatio, imageSize);
+
+    const image = await client.textToImage({
+      model: MODEL,
+      inputs: prompt,
+      parameters: {
+        width,
+        height,
+        num_inference_steps: 4,
+      },
+      provider: 'hf-inference',
     });
 
-    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.data);
-    if (!part?.inlineData?.data) {
-      return res.status(502).json({ ok: false, error: 'Gemini returned no image data.' });
-    }
+    const buffer = Buffer.from(await image.arrayBuffer());
+    const mimeType = image.type || 'image/png';
 
-    const mimeType = part.inlineData.mimeType || 'image/png';
     return res.status(200).json({
       ok: true,
-      image: `data:${mimeType};base64,${part.inlineData.data}`,
-      mimeType
+      image: `data:${mimeType};base64,${buffer.toString('base64')}`,
+      mimeType,
+      model: MODEL,
     });
   } catch (error) {
-    console.error('Gemini image generation error:', error);
+    console.error('Hugging Face image generation error:', error);
+    const status = error?.status || error?.response?.status || 400;
+    let message = error?.message || 'Image generation failed';
 
-    const message = error?.message || 'Image generation failed';
-    const statusCode = error?.status ?? error?.code;
+    if (status === 401) message = 'Hugging Face authentication failed. Check that HF_TOKEN is a valid token with Inference permissions.';
+    if (status === 402) message = 'Hugging Face free inference credits are exhausted. Check your Hugging Face Inference Providers usage.';
+    if (status === 429) message = 'Hugging Face is rate-limiting requests. Please wait a moment and try again.';
 
-    if (statusCode === 429 || error?.status === 429 || /quota exceeded|resource_exhausted/i.test(message)) {
-      return res.status(429).json({
-        ok: false,
-        error: 'Gemini image generation is not available on the current API quota. Gemini 3.1 Flash Image currently requires paid Gemini API access; your project is reporting a free-tier quota of 0. Add billing/paid-tier access to the Gemini project, or switch Origin to another image provider.'
-      });
-    }
-
-    if (statusCode === 401 || error?.code === 401) {
-      return res.status(401).json({ ok: false, error: 'The Gemini API key is invalid or unauthorized.' });
-    }
-
-    return res.status(400).json({ ok: false, error: message });
+    return res.status(status >= 400 && status <= 599 ? status : 400).json({ ok: false, error: message });
   }
 }

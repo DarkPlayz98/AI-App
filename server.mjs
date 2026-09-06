@@ -40,6 +40,13 @@ function validate(body) {
   return { prompt, aspectRatio, imageSize };
 }
 
+function validateEnhance(body) {
+  const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
+  if (!prompt) throw new Error('prompt is required');
+  if (prompt.length > 10000) throw new Error('prompt is too long');
+  return prompt;
+}
+
 async function makeImage({ prompt, aspectRatio, imageSize }) {
   if (!ai) throw new Error('Gemini API key is not configured on the server');
   const response = await ai.models.generateContent({
@@ -58,6 +65,17 @@ async function makeImage({ prompt, aspectRatio, imageSize }) {
   };
 }
 
+async function enhance(prompt) {
+  if (!ai) throw new Error('Gemini API key is not configured on the server');
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: `Rewrite this image-generation prompt into a detailed, production-quality prompt. Preserve the user's subject and intent. Add useful composition, lighting, camera/lens, materials, environment, color, and realism details only when appropriate. Do not add a new subject. Return only the improved prompt, with no commentary.\n\nPrompt: ${prompt}`
+  });
+  const result = response.text?.trim();
+  if (!result) throw new Error('The model returned no enhanced prompt');
+  return result;
+}
+
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'origin-image-api' }));
 
 app.post('/api/v1/images/generate', auth, async (req, res) => {
@@ -67,6 +85,16 @@ app.post('/api/v1/images/generate', auth, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(400).json({ ok: false, error: error?.message || 'Image generation failed' });
+  }
+});
+
+app.post('/api/v1/prompts/enhance', auth, async (req, res) => {
+  try {
+    const result = await enhance(validateEnhance(req.body));
+    res.json({ ok: true, prompt: result });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ ok: false, error: error?.message || 'Prompt enhancement failed' });
   }
 });
 

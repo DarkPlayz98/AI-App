@@ -1,16 +1,9 @@
-const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-const endpointKey = import.meta.env.VITE_ORIGIN_API_KEY || '';
-
-function headers() {
-  const result: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (endpointKey) result.Authorization = `Bearer ${endpointKey}`;
-  return result;
-}
+const apiBase = (import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '');
 
 async function request(path: string, body: unknown) {
   const response = await fetch(`${apiBase}${path}`, {
     method: 'POST',
-    headers: headers(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 

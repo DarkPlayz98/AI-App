@@ -1,17 +1,22 @@
 {
-  "name": "learnsphere-ai",
+  "name": "origin-image-api",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "node server.mjs",
     "build": "vite build",
+    "start": "node server.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "react-dom": "^19.2.0",
     "react": "^19.2.0",
-    "@google/genai": "^1.28.0"
+    "@google/genai": "^1.28.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

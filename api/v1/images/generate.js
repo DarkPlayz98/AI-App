@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     if (!hfToken) {
       return res.status(500).json({
         ok: false,
-        error: 'HF_TOKEN is missing in Vercel. Create a Hugging Face token with Inference permissions, add it under Project Settings -> Environment Variables, then redeploy.',
+        error: 'HF_TOKEN is missing in Vercel. Create a Hugging Face token with Inference Providers permissions, add it under Project Settings -> Environment Variables, then redeploy.',
       });
     }
 
@@ -44,6 +44,8 @@ export default async function handler(req, res) {
     const client = new HfInference(hfToken);
     const { width, height } = dimensions(aspectRatio, imageSize);
 
+    // Let Hugging Face automatically select a currently available provider.
+    // FLUX.1-schnell is currently served through Inference Providers such as fal-ai.
     const image = await client.textToImage({
       model: MODEL,
       inputs: prompt,
@@ -52,7 +54,7 @@ export default async function handler(req, res) {
         height,
         num_inference_steps: 4,
       },
-      provider: 'hf-inference',
+      provider: 'auto',
     });
 
     const buffer = Buffer.from(await image.arrayBuffer());
@@ -69,9 +71,15 @@ export default async function handler(req, res) {
     const status = error?.status || error?.response?.status || 400;
     let message = error?.message || 'Image generation failed';
 
-    if (status === 401) message = 'Hugging Face authentication failed. Check that HF_TOKEN is a valid token with Inference permissions.';
-    if (status === 402) message = 'Hugging Face free inference credits are exhausted. Check your Hugging Face Inference Providers usage.';
-    if (status === 429) message = 'Hugging Face is rate-limiting requests. Please wait a moment and try again.';
+    if (/no provider|provider.*available|inference provider/i.test(message)) {
+      message = 'Hugging Face could not find an available inference provider for this model. Check that your HF token has Inference Providers permission and that the model has an active provider.';
+    } else if (status === 401) {
+      message = 'Hugging Face authentication failed. Check that HF_TOKEN is a valid token with Inference Providers permission.';
+    } else if (status === 402) {
+      message = 'Hugging Face inference credits are exhausted. Check your Hugging Face Inference Providers usage.';
+    } else if (status === 429) {
+      message = 'Hugging Face is rate-limiting requests. Please wait a moment and try again.';
+    }
 
     return res.status(status >= 400 && status <= 599 ? status : 400).json({ ok: false, error: message });
   }
